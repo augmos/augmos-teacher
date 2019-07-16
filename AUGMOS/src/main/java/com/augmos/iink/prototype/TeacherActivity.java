@@ -24,6 +24,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Space;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.bumptech.glide.request.RequestOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
@@ -45,11 +46,16 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 
+import lecho.lib.hellocharts.listener.PieChartOnValueSelectListener;
 import lecho.lib.hellocharts.model.Axis;
 import lecho.lib.hellocharts.model.Line;
 import lecho.lib.hellocharts.model.LineChartData;
+import lecho.lib.hellocharts.model.PieChartData;
 import lecho.lib.hellocharts.model.PointValue;
+import lecho.lib.hellocharts.model.SliceValue;
+import lecho.lib.hellocharts.util.ChartUtils;
 import lecho.lib.hellocharts.view.LineChartView;
+import lecho.lib.hellocharts.view.PieChartView;
 
 public class TeacherActivity extends AppCompatActivity {
 
@@ -66,6 +72,10 @@ public class TeacherActivity extends AppCompatActivity {
 
     private ArrayList<String> themen = new ArrayList<>();
     private ArrayList<String> themenID = new ArrayList<>();
+
+
+    private PieChartView chart;
+    private PieChartData data;
 
 
 
@@ -190,7 +200,15 @@ public class TeacherActivity extends AppCompatActivity {
 
 
 
-
+            //Name
+            TextView textView = new TextView(this);
+            textView.setText(curStudent.getName());
+            textView.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+            textView.setTextSize(20);
+            textView.setGravity(Gravity.LEFT);
+            container.addView(textView);
 
             final ImageButton imageButton;
 
@@ -210,13 +228,6 @@ public class TeacherActivity extends AppCompatActivity {
             container.addView(imageButton);
 
 
-            //Name
-            TextView textView = new TextView(this);
-            textView.setText(curStudent.getName());
-            textView.setLayoutParams(new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT));
-            container.addView(textView);
 
             //progress
             ProgressBar progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -264,10 +275,6 @@ public class TeacherActivity extends AppCompatActivity {
             cardLinearLayout.setGravity(Gravity.CENTER);
             profileCard.addView(cardLinearLayout);
 
-            //image
-            ImageView imageView = new ImageView(this);
-            imageView.setImageResource(R.drawable.profile);
-            cardLinearLayout.addView(imageView);
 
             //Name
             TextView textView = new TextView(this);
@@ -275,7 +282,14 @@ public class TeacherActivity extends AppCompatActivity {
             textView.setLayoutParams(new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT));
+            textView.setTextSize(20);
             cardLinearLayout.addView(textView);
+
+
+            //image
+            ImageView imageView = new ImageView(this);
+            imageView.setImageResource(R.drawable.profile);
+            cardLinearLayout.addView(imageView);
 
             //progress
             ProgressBar progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -293,6 +307,117 @@ public class TeacherActivity extends AppCompatActivity {
 
             //----Ende Obere Card
 
+
+
+
+
+
+
+
+
+
+
+            //linear chart 3, kumulierte werte
+
+            final List<PointValue> values2 = new ArrayList<PointValue>();
+            //Daten über ExcerciseSolutions der Schüler letzte 10
+            LOG.info("Firebase: Getting student collection 2");
+
+            fb.collection("students").document(studentid).collection("solutions").orderBy("timestamp", Query.Direction.DESCENDING).limit(10).addSnapshotListener(new EventListener<QuerySnapshot>() {
+                @Override
+                public void onEvent(@Nullable QuerySnapshot value,
+                                    @Nullable FirebaseFirestoreException e) {
+                    int i = 0;
+                    int correct=0;
+                    if(value.isEmpty()){
+
+                        //create random values
+                       correct = createRandomCum(values2, 10);
+
+                        //return;
+                    }
+                    else {
+                        for (QueryDocumentSnapshot document : value) {
+                            Log.d("TeacherActivity", document.getId() + " => correct: " + document.getData().get("correct"));
+                            ExerciseSolution ex = document.toObject(ExerciseSolution.class);
+
+                            if (ex.getCorrect()) {
+                                values2.add(new PointValue(i++, ++correct));
+                                //Log.d("TeacherActivity", "true");
+                            } else {
+                                values2.add(new PointValue(i++, correct));
+                                //Log.d("TeacherActivity", "false");
+                            }
+                        }
+                    }
+
+                    //hier der ganze Rest zum erstellen des Views
+                    CardView chartCardView = new CardView(TeacherActivity.this);
+                    chartCardView.setLayoutParams(new ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT));
+                    chartCardView.setRadius(4);
+
+                    LinearLayout chartLinearLayout = new LinearLayout(TeacherActivity.this);
+                    chartLinearLayout.setLayoutParams(new ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT));
+                    chartLinearLayout.setOrientation(LinearLayout.VERTICAL);
+                    chartLinearLayout.setPadding(10,10,10,10);
+                    chartCardView.addView(chartLinearLayout);
+
+
+                    TextView title = new TextView(TeacherActivity.this);
+                    title.setText("Lernfortschritt");
+                    chartLinearLayout.addView(title);
+
+                    LineChartView chart = new LineChartView(TeacherActivity.this);
+                    chart.setLayoutParams(new ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            400));
+
+                    //In most cased you can call data model methods in builder-pattern-like manner.
+                    Line line = new Line(values2).setColor(ContextCompat.getColor(TeacherActivity.this, R.color.colorAccent)).setCubic(false).setStrokeWidth(2);
+                    List<Line> lines = new ArrayList<Line>();
+                    lines.add(line);
+
+                    LineChartData data = new LineChartData();
+                    data.setLines(lines);
+                    data.setAxisXBottom(Axis.generateAxisFromRange(0,values2.size(),1));
+                    data.setAxisYLeft(Axis.generateAxisFromRange(0,1,1)); //für beschriftung, 2.paramter auf: correct
+
+                    chart.setLineChartData(data);
+                    chartLinearLayout.addView(chart);
+
+                    linearLayout.addView(chartCardView);
+
+
+                    Space space = new Space(TeacherActivity.this);
+                    space.setLayoutParams(new ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            10));
+                    linearLayout.addView(space);
+
+
+                    //create pieview (in methode ausgelagert, damit es nach dem linearen graphen angezeigt wird)
+                    View pieView = createPieChart();
+                    linearLayout.addView(pieView);
+
+                    Space space2 = new Space(TeacherActivity.this);
+                    space2.setLayoutParams(new ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            10));
+                    linearLayout.addView(space2);
+
+
+
+                }});
+
+
+
+
+            //chart diskret
+
             //für chart die value list
             final List<PointValue> values = new ArrayList<PointValue>();
             //Daten über ExcerciseSolutions der Schüler letzte 10
@@ -304,17 +429,19 @@ public class TeacherActivity extends AppCompatActivity {
                                     @Nullable FirebaseFirestoreException e) {
                     int i = 0;
                     if(value.isEmpty()){
-                        return;
+                        createRandomLin(values,10);
                     }
-                    for (QueryDocumentSnapshot document : value) {
-                        Log.d("TeacherActivity", document.getId() + " => correct: " + document.getData().get("correct"));
-                        ExerciseSolution ex = document.toObject(ExerciseSolution.class);
-                        if(ex.getCorrect()){
-                            values.add(new PointValue(i++,1));
-                            //Log.d("TeacherActivity", "true");
-                        }else{
-                            values.add(new PointValue(i++,0));
-                            //Log.d("TeacherActivity", "false");
+                    else {
+                        for (QueryDocumentSnapshot document : value) {
+                            Log.d("TeacherActivity", document.getId() + " => correct: " + document.getData().get("correct"));
+                            ExerciseSolution ex = document.toObject(ExerciseSolution.class);
+                            if (ex.getCorrect()) {
+                                values.add(new PointValue(i++, 1));
+                                //Log.d("TeacherActivity", "true");
+                            } else {
+                                values.add(new PointValue(i++, 0));
+                                //Log.d("TeacherActivity", "false");
+                            }
                         }
                     }
                     //hier der ganze Rest zum erstellen des Views
@@ -352,12 +479,27 @@ public class TeacherActivity extends AppCompatActivity {
                     data.setAxisYLeft(Axis.generateAxisFromRange(0,1,1));
 
                     chart.setLineChartData(data);
+                   // chart.setScaleY(0.5f);
                     chartLinearLayout.addView(chart);
 
                     linearLayout.addView(chartCardView);
 
+                    Space space = new Space(TeacherActivity.this);
+                    space.setLayoutParams(new ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            10));
+                    linearLayout.addView(space);
+
+
+
+
 
                 }});
+
+
+
+
+
 
 
             // Reference to an image file in Cloud Storage
@@ -378,6 +520,21 @@ public class TeacherActivity extends AppCompatActivity {
 
     }
 
+    private class ValueTouchListener implements PieChartOnValueSelectListener {
+
+        @Override
+        public void onValueSelected(int arcIndex, SliceValue value) {
+            //Toast.makeText(TeacherActivity.this, "Selected: " + value, Toast.LENGTH_SHORT).show();
+        }
+
+        @Override
+        public void onValueDeselected() {
+            // TODO Auto-generated method stub
+
+        }
+
+    }
+
 
     public Dialog onCreateDialog(Bundle savedInstanceState) {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -388,6 +545,112 @@ public class TeacherActivity extends AppCompatActivity {
                     }
                 });
         return builder.create();
+    }
+
+    public int createRandomCum (List<PointValue> values, int i){
+        int cur = 0;
+        for (int j = 0; j < i; j++) {
+            int random = (int)(Math.random()*2);
+
+            if(random == 0)
+                values.add(new PointValue(j,cur));
+            else values.add(new PointValue(j,++cur));
+
+        }
+
+        return cur;
+    }
+
+    public void createRandomLin (List<PointValue> values, int i){
+        for (int j = 0; j < i; j++) {
+            int random = (int)(Math.random()*2);
+
+            if(random == 0)
+                values.add(new PointValue(j,0));
+            else values.add(new PointValue(j,1));
+
+        }
+    }
+
+    public View createPieChart(){
+
+
+        CardView chartCardView2 = new CardView(TeacherActivity.this);
+        chartCardView2.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        chartCardView2.setRadius(4);
+
+        LinearLayout chartLinearLayout = new LinearLayout(TeacherActivity.this);
+        chartLinearLayout.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        chartLinearLayout.setOrientation(LinearLayout.VERTICAL);
+        chartLinearLayout.setPadding(10,10,10,10);
+        chartCardView2.addView(chartLinearLayout);
+
+
+        TextView title = new TextView(TeacherActivity.this);
+        title.setText("Schwächen");
+        chartLinearLayout.addView(title);
+
+        chart = new PieChartView(TeacherActivity.this);
+        data = new PieChartData();
+        chart.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                400));
+
+        int numValues = 4;
+
+        List<SliceValue> pieValues = new ArrayList<SliceValue>();
+        for (int i = 0; i < numValues; ++i) {
+            SliceValue sliceValue = new SliceValue((float) Math.random() * 30 + 15, ChartUtils.nextColor());
+            pieValues.add(sliceValue);
+        }
+
+
+        data = new PieChartData(pieValues);
+        //data.setHasCenterCircle(true);
+        data.setHasLabels(true);
+
+        List<String> themen = new ArrayList<>();
+        themen.add("addition");
+        themen.add("quadratic functions");
+        themen.add("subtraction");
+        themen.add("variables");
+        themen.add("break statements");
+        themen.add("algebra");
+        themen.add("determinant");
+        themen.add("linear equations");
+
+
+        List<Integer> curthemen = new ArrayList<>();
+        for (SliceValue value : data.getValues()) {
+            //value.setTarget((float) Math.random() * 30 + 15);
+            int thema=0;
+            boolean ok = false;
+            while(!ok){
+                thema= (int) (Math.random()*themen.size());
+                if(!curthemen.contains(thema)){
+                    curthemen.add(thema);
+                    ok = true;
+                }
+            }
+            value.setLabel(themen.get(thema));
+        }
+
+
+        chart.setPieChartData(data);
+
+
+        chartLinearLayout.addView(chart);
+
+        //chart.setOnValueTouchListener(new ValueTouchListener());
+
+        return chartCardView2;
+
+        //linearLayout.addView(chartCardView2);
+
     }
 
 
